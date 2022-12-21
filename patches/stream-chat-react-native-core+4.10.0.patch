@@ -1,0 +1,1149 @@
+diff --git a/node_modules/stream-chat-react-native-core/package.json b/node_modules/stream-chat-react-native-core/package.json
+index dab257d..150e481 100644
+--- a/node_modules/stream-chat-react-native-core/package.json
++++ b/node_modules/stream-chat-react-native-core/package.json
+@@ -69,7 +69,7 @@
+   },
+   "dependencies": {
+     "@babel/runtime": "^7.12.5",
+-    "@gorhom/bottom-sheet": "^4.1.6",
++    "@gorhom/bottom-sheet": "^4.4.5",
+     "dayjs": "1.10.5",
+     "file-loader": "6.2.0",
+     "i18next": "20.2.4",
+diff --git a/node_modules/stream-chat-react-native-core/src/components/AttachmentPicker/AttachmentPicker.tsx b/node_modules/stream-chat-react-native-core/src/components/AttachmentPicker/AttachmentPicker.tsx
+index c3992d5..b75bd68 100644
+--- a/node_modules/stream-chat-react-native-core/src/components/AttachmentPicker/AttachmentPicker.tsx
++++ b/node_modules/stream-chat-react-native-core/src/components/AttachmentPicker/AttachmentPicker.tsx
+@@ -1,34 +1,19 @@
+-import React, { useEffect, useMemo, useRef, useState } from 'react';
+-import {
+-  Alert,
+-  BackHandler,
+-  Dimensions,
+-  ImageBackground,
+-  Keyboard,
+-  Platform,
+-  StatusBar,
+-  StyleSheet,
+-  Text,
+-  View,
+-} from 'react-native';
++import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
++import { BackHandler, Dimensions, Keyboard, Platform, StatusBar, StyleSheet } from 'react-native';
+ 
+-import BottomSheet, {
+-  BottomSheetFlatList,
+-  BottomSheetHandleProps,
+-  TouchableOpacity,
+-} from '@gorhom/bottom-sheet';
++import BottomSheet, { BottomSheetFlatList, BottomSheetHandleProps } from '@gorhom/bottom-sheet';
+ import dayjs from 'dayjs';
+ import duration from 'dayjs/plugin/duration';
+-import { lookup } from 'mime-types';
+ 
+ import type { AttachmentPickerErrorProps } from './components/AttachmentPickerError';
+ 
++import { renderAttachmentPickerItem } from './components/AttachmentPickerItem';
++
+ import { useAttachmentPickerContext } from '../../contexts/attachmentPickerContext/AttachmentPickerContext';
+ import { useTheme } from '../../contexts/themeContext/ThemeContext';
+-import { Recorder } from '../../icons';
+-import { getLocalAssetUri, getPhotos } from '../../native';
+-import type { Asset, File } from '../../types/types';
+-import { vh, vw } from '../../utils/utils';
++import { getPhotos } from '../../native';
++import type { Asset } from '../../types/types';
++import { vh } from '../../utils/utils';
+ 
+ dayjs.extend(duration);
+ 
+@@ -36,238 +21,11 @@ const styles = StyleSheet.create({
+   container: {
+     flexGrow: 1,
+   },
+-  durationText: {
+-    fontWeight: 'bold',
+-  },
+-  overlay: {
+-    alignItems: 'flex-end',
+-    flex: 1,
+-  },
+-  videoView: {
+-    bottom: 5,
+-    display: 'flex',
+-    flexDirection: 'row',
+-    justifyContent: 'space-between',
+-    paddingHorizontal: 5,
+-    position: 'absolute',
+-    width: '100%',
+-  },
+ });
+ 
+ const screenHeight = vh(100);
+ const fullScreenHeight = Dimensions.get('window').height;
+ 
+-export type AttachmentPickerItemType = {
+-  asset: Asset;
+-  ImageOverlaySelectedComponent: React.ComponentType;
+-  maxNumberOfFiles: number;
+-  numberOfUploads: number;
+-  selected: boolean;
+-  setSelectedFiles: React.Dispatch<React.SetStateAction<File[]>>;
+-  setSelectedImages: React.Dispatch<React.SetStateAction<Asset[]>>;
+-  numberOfAttachmentPickerImageColumns?: number;
+-};
+-
+-type AttachmentImageProps = Omit<AttachmentPickerItemType, 'setSelectedFiles'>;
+-
+-type AttachmentVideoProps = Omit<AttachmentPickerItemType, 'setSelectedImages'>;
+-
+-const AttachmentVideo: React.FC<AttachmentVideoProps> = (props) => {
+-  const {
+-    asset,
+-    ImageOverlaySelectedComponent,
+-    maxNumberOfFiles,
+-    numberOfAttachmentPickerImageColumns,
+-    numberOfUploads,
+-    selected,
+-    setSelectedFiles,
+-  } = props;
+-
+-  const {
+-    theme: {
+-      attachmentPicker: { durationText, image, imageOverlay },
+-      colors: { overlay, white },
+-    },
+-  } = useTheme();
+-
+-  const { duration, playableDuration, uri } = asset;
+-
+-  const videoDuration = duration ? duration : playableDuration;
+-
+-  const ONE_HOUR_IN_SECONDS = 3600;
+-
+-  let durationLabel = '00:00';
+-
+-  if (videoDuration) {
+-    const isDurationLongerThanHour = videoDuration / ONE_HOUR_IN_SECONDS >= 1;
+-    const formattedDurationParam = isDurationLongerThanHour ? 'HH:mm:ss' : 'mm:ss';
+-    const formattedVideoDuration = dayjs
+-      .duration(videoDuration, 'second')
+-      .format(formattedDurationParam);
+-    durationLabel = formattedVideoDuration;
+-  }
+-
+-  const size = vw(100) / (numberOfAttachmentPickerImageColumns || 3) - 2;
+-
+-  const onPressVideo = async () => {
+-    // For the case of expo messaging app where you need to fetch the asset uri from asset id
+-    const localAssetURI = asset.id && (await getLocalAssetUri(asset.id));
+-    if (selected) {
+-      setSelectedFiles((files) => files.filter((file) => file.uri !== asset.uri));
+-    } else {
+-      setSelectedFiles((files) => {
+-        if (numberOfUploads >= maxNumberOfFiles) {
+-          Alert.alert('Maximum number of files reached');
+-          return files;
+-        }
+-        return [
+-          ...files,
+-          {
+-            duration: durationLabel,
+-            name: asset.filename,
+-            size: asset.fileSize,
+-            type: 'video',
+-            uri: localAssetURI || asset.uri,
+-          },
+-        ];
+-      });
+-    }
+-  };
+-
+-  return (
+-    <TouchableOpacity onPress={onPressVideo}>
+-      <ImageBackground
+-        source={{ uri }}
+-        style={[
+-          {
+-            height: size,
+-            margin: 1,
+-            width: size,
+-          },
+-          image,
+-        ]}
+-      >
+-        {selected && (
+-          <View style={[styles.overlay, { backgroundColor: overlay }, imageOverlay]}>
+-            <ImageOverlaySelectedComponent />
+-          </View>
+-        )}
+-        <View style={styles.videoView}>
+-          <Recorder height={20} pathFill={white} width={25} />
+-          {videoDuration ? (
+-            <Text style={[styles.durationText, durationText, { color: white }]}>
+-              {durationLabel}
+-            </Text>
+-          ) : null}
+-        </View>
+-      </ImageBackground>
+-    </TouchableOpacity>
+-  );
+-};
+-
+-const AttachmentImage: React.FC<AttachmentImageProps> = (props) => {
+-  const {
+-    asset,
+-    ImageOverlaySelectedComponent,
+-    maxNumberOfFiles,
+-    numberOfAttachmentPickerImageColumns,
+-    numberOfUploads,
+-    selected,
+-    setSelectedImages,
+-  } = props;
+-  const {
+-    theme: {
+-      attachmentPicker: { image, imageOverlay },
+-      colors: { overlay },
+-    },
+-  } = useTheme();
+-
+-  const size = vw(100) / (numberOfAttachmentPickerImageColumns || 3) - 2;
+-
+-  const { uri } = asset;
+-
+-  const onPressImage = () => {
+-    if (selected) {
+-      setSelectedImages((images) => images.filter((image) => image.uri !== asset.uri));
+-    } else {
+-      setSelectedImages((images) => {
+-        if (numberOfUploads >= maxNumberOfFiles) {
+-          Alert.alert('Maximum number of files reached');
+-          return images;
+-        }
+-        return [...images, asset];
+-      });
+-    }
+-  };
+-
+-  return (
+-    <TouchableOpacity onPress={onPressImage}>
+-      <ImageBackground
+-        source={{ uri }}
+-        style={[
+-          {
+-            height: size,
+-            margin: 1,
+-            width: size,
+-          },
+-          image,
+-        ]}
+-      >
+-        {selected && (
+-          <View style={[styles.overlay, { backgroundColor: overlay }, imageOverlay]}>
+-            <ImageOverlaySelectedComponent />
+-          </View>
+-        )}
+-      </ImageBackground>
+-    </TouchableOpacity>
+-  );
+-};
+-
+-const renderItem = ({ item }: { item: AttachmentPickerItemType }) => {
+-  const {
+-    asset,
+-    ImageOverlaySelectedComponent,
+-    maxNumberOfFiles,
+-    numberOfAttachmentPickerImageColumns,
+-    numberOfUploads,
+-    selected,
+-    setSelectedFiles,
+-    setSelectedImages,
+-  } = item;
+-
+-  const contentType = lookup(asset.filename) || 'multipart/form-data';
+-
+-  const fileType = asset.filename
+-    ? contentType.startsWith('image/')
+-      ? 'image'
+-      : 'video'
+-    : asset.type === 'video'
+-    ? 'video'
+-    : 'image';
+-
+-  return fileType === 'image' ? (
+-    <AttachmentImage
+-      asset={asset}
+-      ImageOverlaySelectedComponent={ImageOverlaySelectedComponent}
+-      maxNumberOfFiles={maxNumberOfFiles}
+-      numberOfAttachmentPickerImageColumns={numberOfAttachmentPickerImageColumns}
+-      numberOfUploads={numberOfUploads}
+-      selected={selected}
+-      setSelectedImages={setSelectedImages}
+-    />
+-  ) : (
+-    <AttachmentVideo
+-      asset={asset}
+-      ImageOverlaySelectedComponent={ImageOverlaySelectedComponent}
+-      maxNumberOfFiles={maxNumberOfFiles}
+-      numberOfAttachmentPickerImageColumns={numberOfAttachmentPickerImageColumns}
+-      numberOfUploads={numberOfUploads}
+-      selected={selected}
+-      setSelectedFiles={setSelectedFiles}
+-    />
+-  );
+-};
+-
+ export type AttachmentPickerProps = {
+   /**
+    * Custom UI component to render [draggable handle](https://github.com/GetStream/stream-chat-react-native/blob/main/screenshots/docs/1.png) of attachment picker.
+@@ -337,35 +95,39 @@ export const AttachmentPicker = React.forwardRef(
+     } = useAttachmentPickerContext();
+ 
+     const [currentIndex, setCurrentIndex] = useState(-1);
+-    const [endCursor, setEndCursor] = useState<string>();
++    const endCursorRef = useRef<string>();
+     const [photoError, setPhotoError] = useState(false);
+-    const [hasNextPage, setHasNextPage] = useState(true);
++    const hasNextPageRef = useRef(true);
+     const [loadingPhotos, setLoadingPhotos] = useState(false);
+     const [photos, setPhotos] = useState<Asset[]>([]);
+-    const bottomSheetCloseOnKeyboardShowTimeout = useRef<NodeJS.Timeout>();
++    const attemptedToLoadPhotosOnOpenRef = useRef(false);
+ 
+-    const getMorePhotos = async () => {
+-      if (hasNextPage && !loadingPhotos && currentIndex > -1 && selectedPicker === 'images') {
++    const getMorePhotos = useCallback(async () => {
++      if (
++        hasNextPageRef.current &&
++        !loadingPhotos &&
++        currentIndex > -1 &&
++        selectedPicker === 'images'
++      ) {
++        setPhotoError(false);
+         setLoadingPhotos(true);
++        const endCursor = endCursorRef.current;
+         try {
+           const results = await getPhotos({
+             after: endCursor,
+             first: numberOfAttachmentImagesToLoadPerCall ?? 60,
+           });
+-          if (endCursor) {
+-            setPhotos([...photos, ...results.assets]);
+-          } else {
+-            setPhotos(results.assets);
+-          }
+-          setEndCursor(results.endCursor);
+-          setHasNextPage(results.hasNextPage || false);
++          endCursorRef.current = results.endCursor;
++          setPhotos((prevPhotos) =>
++            endCursor ? [...prevPhotos, ...results.assets] : results.assets,
++          );
++          hasNextPageRef.current = !!results.hasNextPage;
+         } catch (error) {
+-          console.log(error);
+           setPhotoError(true);
+         }
+         setLoadingPhotos(false);
+       }
+-    };
++    }, [currentIndex, selectedPicker, loadingPhotos]);
+ 
+     useEffect(() => {
+       const backAction = () => {
+@@ -381,27 +143,11 @@ export const AttachmentPicker = React.forwardRef(
+       const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+ 
+       return () => backHandler.remove();
+-    }, [selectedPicker]);
++    }, [selectedPicker, closePicker]);
+ 
+     useEffect(() => {
+-      const hideAttachmentPicker = () => {
+-        if (bottomSheetCloseOnKeyboardShowTimeout.current) {
+-          clearTimeout(bottomSheetCloseOnKeyboardShowTimeout.current);
+-        }
+-        setSelectedPicker(undefined);
+-        // This short timeout is to prevent a race condition
+-        // where the close function is called during the point when a internal container layout happens within the bottomsheet due to keyboard affecting the layout
+-        // If the container layout measures a shorter height than previous but if the close snapped to the previous height's position, the bottom sheet will show up
+-        // this short delay ensures that close function is always called after a container layout due to keyboard change
+-        bottomSheetCloseOnKeyboardShowTimeout.current = setTimeout(
+-          () => (ref as React.MutableRefObject<BottomSheet | undefined>).current?.close(),
+-          150,
+-        );
+-      };
+-      const keyboardSubscription =
+-        Platform.OS === 'ios'
+-          ? Keyboard.addListener('keyboardWillShow', hideAttachmentPicker)
+-          : Keyboard.addListener('keyboardDidShow', hideAttachmentPicker);
++      const keyboardShowEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
++      const keyboardSubscription = Keyboard.addListener(keyboardShowEvent, closePicker);
+ 
+       return () => {
+         if (keyboardSubscription?.remove) {
+@@ -410,38 +156,35 @@ export const AttachmentPicker = React.forwardRef(
+         }
+ 
+         // To keep compatibility with older versions of React Native, where `remove()` is not available
+-        if (Platform.OS === 'ios') {
+-          Keyboard.removeListener('keyboardWillShow', hideAttachmentPicker);
+-        } else {
+-          Keyboard.removeListener('keyboardDidShow', hideAttachmentPicker);
+-        }
+-        if (bottomSheetCloseOnKeyboardShowTimeout.current) {
+-          clearTimeout(bottomSheetCloseOnKeyboardShowTimeout.current);
+-        }
++        Keyboard.removeListener(keyboardShowEvent, closePicker);
+       };
+-    }, []);
++    }, [closePicker]);
+ 
+     useEffect(() => {
+       if (currentIndex < 0) {
+         setSelectedPicker(undefined);
+         if (!loadingPhotos) {
+-          setEndCursor(undefined);
+-          setHasNextPage(true);
++          endCursorRef.current = undefined;
++          hasNextPageRef.current = true;
++          attemptedToLoadPhotosOnOpenRef.current = false;
++          setPhotoError(false);
+         }
+       }
+-    }, [currentIndex]);
++    }, [currentIndex, loadingPhotos]);
+ 
+     useEffect(() => {
+       if (
++        !attemptedToLoadPhotosOnOpenRef.current &&
+         selectedPicker === 'images' &&
+-        endCursor === undefined &&
++        endCursorRef.current === undefined &&
+         currentIndex > -1 &&
+         !loadingPhotos
+       ) {
+-        setPhotoError(false);
+         getMorePhotos();
++        // we do this only once on open for avoiding to request permissions in rationale dialog again and again on Android
++        attemptedToLoadPhotosOnOpenRef.current = true;
+       }
+-    }, [currentIndex, selectedPicker]);
++    }, [currentIndex, selectedPicker, getMorePhotos, loadingPhotos]);
+ 
+     const selectedPhotos = photos.map((asset) => ({
+       asset,
+@@ -464,29 +207,43 @@ export const AttachmentPicker = React.forwardRef(
+      * dimensions for screen and window, it is incorrect and we need to account for
+      * this. If you use a translucent header bar more adjustments are needed.
+      */
+-    const statusBarHeight = StatusBar.currentHeight ?? 0;
+-    const bottomBarHeight = fullScreenHeight - screenHeight - statusBarHeight;
+-    const androidBottomBarHeightAdjustment =
+-      Platform.OS === 'android'
+-        ? bottomBarHeight === statusBarHeight
+-          ? translucentStatusBar
+-            ? 0
+-            : StatusBar.currentHeight ?? 0
+-          : translucentStatusBar
+-          ? bottomBarHeight > statusBarHeight
+-            ? -bottomBarHeight + statusBarHeight
+-            : bottomBarHeight > 0
+-            ? -statusBarHeight
+-            : 0
+-          : bottomBarHeight > 0
+-          ? 0
+-          : statusBarHeight
+-        : 0;
++    const getAndroidBottomBarHeightAdjustment = (): number => {
++      if (Platform.OS === 'android') {
++        const statusBarHeight = StatusBar.currentHeight ?? 0;
++        const bottomBarHeight = fullScreenHeight - screenHeight - statusBarHeight;
++        if (bottomBarHeight === statusBarHeight) {
++          return translucentStatusBar ? 0 : statusBarHeight;
++        } else {
++          if (translucentStatusBar) {
++            if (bottomBarHeight > statusBarHeight) {
++              return -bottomBarHeight + statusBarHeight;
++            } else {
++              return bottomBarHeight > 0 ? -statusBarHeight : 0;
++            }
++          } else {
++            return bottomBarHeight > 0 ? 0 : statusBarHeight;
++          }
++        }
++      }
++      return 0;
++    };
++
++    const getInitialSnapPoint = (): number => {
++      if (attachmentPickerBottomSheetHeight !== undefined) {
++        return attachmentPickerBottomSheetHeight;
++      }
++      if (Platform.OS === 'android') {
++        return (
++          308 +
++          (fullScreenHeight - screenHeight + getAndroidBottomBarHeightAdjustment()) -
++          handleHeight
++        );
++      } else {
++        return 308 + (fullScreenHeight - screenHeight);
++      }
++    };
+ 
+-    const initialSnapPoint =
+-      attachmentPickerBottomSheetHeight ?? Platform.OS === 'android'
+-        ? 308 + (fullScreenHeight - screenHeight + androidBottomBarHeightAdjustment) - handleHeight
+-        : 308 + (fullScreenHeight - screenHeight + androidBottomBarHeightAdjustment);
++    const initialSnapPoint = getInitialSnapPoint();
+ 
+     const finalSnapPoint =
+       Platform.OS === 'android'
+@@ -531,12 +288,12 @@ export const AttachmentPicker = React.forwardRef(
+             keyExtractor={(item) => item.asset.uri}
+             numColumns={numberOfAttachmentPickerImageColumns ?? 3}
+             onEndReached={getMorePhotos}
+-            renderItem={renderItem}
++            renderItem={renderAttachmentPickerItem}
+           />
+         </BottomSheet>
+         {selectedPicker === 'images' && photoError && (
+           <AttachmentPickerError
+-            attachmentPickerBottomSheetHeight={attachmentPickerBottomSheetHeight}
++            attachmentPickerBottomSheetHeight={initialSnapPoint}
+             attachmentPickerErrorButtonText={attachmentPickerErrorButtonText}
+             AttachmentPickerErrorImage={AttachmentPickerErrorImage}
+             attachmentPickerErrorText={attachmentPickerErrorText}
+diff --git a/node_modules/stream-chat-react-native-core/src/components/AttachmentPicker/components/AttachmentPickerItem.tsx b/node_modules/stream-chat-react-native-core/src/components/AttachmentPicker/components/AttachmentPickerItem.tsx
+new file mode 100644
+index 0000000..1e1c6b5
+--- /dev/null
++++ b/node_modules/stream-chat-react-native-core/src/components/AttachmentPicker/components/AttachmentPickerItem.tsx
+@@ -0,0 +1,245 @@
++import React from 'react';
++
++import { Alert, ImageBackground, StyleSheet, Text, View } from 'react-native';
++
++import { TouchableOpacity } from '@gorhom/bottom-sheet';
++import dayjs from 'dayjs';
++import { lookup } from 'mime-types';
++
++import { useTheme } from '../../../contexts/themeContext/ThemeContext';
++import { Recorder } from '../../../icons';
++import { getLocalAssetUri } from '../../../native';
++import type { Asset, File } from '../../../types/types';
++import { vw } from '../../../utils/utils';
++
++type AttachmentPickerItemType = {
++  asset: Asset;
++  ImageOverlaySelectedComponent: React.ComponentType;
++  maxNumberOfFiles: number;
++  numberOfUploads: number;
++  selected: boolean;
++  setSelectedFiles: React.Dispatch<React.SetStateAction<File[]>>;
++  setSelectedImages: React.Dispatch<React.SetStateAction<Asset[]>>;
++  numberOfAttachmentPickerImageColumns?: number;
++};
++
++type AttachmentImageProps = Omit<AttachmentPickerItemType, 'setSelectedFiles'>;
++
++type AttachmentVideoProps = Omit<AttachmentPickerItemType, 'setSelectedImages'>;
++
++const AttachmentVideo: React.FC<AttachmentVideoProps> = (props) => {
++  const {
++    asset,
++    ImageOverlaySelectedComponent,
++    maxNumberOfFiles,
++    numberOfAttachmentPickerImageColumns,
++    numberOfUploads,
++    selected,
++    setSelectedFiles,
++  } = props;
++
++  const {
++    theme: {
++      attachmentPicker: { durationText, image, imageOverlay },
++      colors: { overlay, white },
++    },
++  } = useTheme();
++
++  const { duration, playableDuration, uri } = asset;
++
++  const videoDuration = duration ? duration : playableDuration;
++
++  const ONE_HOUR_IN_SECONDS = 3600;
++
++  let durationLabel = '00:00';
++
++  if (videoDuration) {
++    const isDurationLongerThanHour = videoDuration / ONE_HOUR_IN_SECONDS >= 1;
++    const formattedDurationParam = isDurationLongerThanHour ? 'HH:mm:ss' : 'mm:ss';
++    const formattedVideoDuration = dayjs
++      .duration(videoDuration, 'second')
++      .format(formattedDurationParam);
++    durationLabel = formattedVideoDuration;
++  }
++
++  const size = vw(100) / (numberOfAttachmentPickerImageColumns || 3) - 2;
++
++  const onPressVideo = async () => {
++    // For the case of expo messaging app where you need to fetch the asset uri from asset id
++    const localAssetURI = asset.id && (await getLocalAssetUri(asset.id));
++    if (selected) {
++      setSelectedFiles((files) => files.filter((file) => file.uri !== asset.uri));
++    } else {
++      setSelectedFiles((files) => {
++        if (numberOfUploads >= maxNumberOfFiles) {
++          Alert.alert('Maximum number of files reached');
++          return files;
++        }
++        return [
++          ...files,
++          {
++            duration: durationLabel,
++            name: asset.filename,
++            size: asset.fileSize,
++            type: 'video',
++            uri: localAssetURI || asset.uri,
++          },
++        ];
++      });
++    }
++  };
++
++  return (
++    <TouchableOpacity onPress={onPressVideo}>
++      <ImageBackground
++        source={{ uri }}
++        style={[
++          {
++            height: size,
++            margin: 1,
++            width: size,
++          },
++          image,
++        ]}
++      >
++        {selected && (
++          <View style={[styles.overlay, { backgroundColor: overlay }, imageOverlay]}>
++            <ImageOverlaySelectedComponent />
++          </View>
++        )}
++        <View style={styles.videoView}>
++          <Recorder height={20} pathFill={white} width={25} />
++          {videoDuration ? (
++            <Text style={[styles.durationText, durationText, { color: white }]}>
++              {durationLabel}
++            </Text>
++          ) : null}
++        </View>
++      </ImageBackground>
++    </TouchableOpacity>
++  );
++};
++
++const AttachmentImage: React.FC<AttachmentImageProps> = (props) => {
++  const {
++    asset,
++    ImageOverlaySelectedComponent,
++    maxNumberOfFiles,
++    numberOfAttachmentPickerImageColumns,
++    numberOfUploads,
++    selected,
++    setSelectedImages,
++  } = props;
++  const {
++    theme: {
++      attachmentPicker: { image, imageOverlay },
++      colors: { overlay },
++    },
++  } = useTheme();
++
++  const size = vw(100) / (numberOfAttachmentPickerImageColumns || 3) - 2;
++
++  const { uri } = asset;
++
++  const onPressImage = () => {
++    if (selected) {
++      setSelectedImages((images) => images.filter((image) => image.uri !== asset.uri));
++    } else {
++      setSelectedImages((images) => {
++        if (numberOfUploads >= maxNumberOfFiles) {
++          Alert.alert('Maximum number of files reached');
++          return images;
++        }
++        return [...images, asset];
++      });
++    }
++  };
++
++  return (
++    <TouchableOpacity onPress={onPressImage}>
++      <ImageBackground
++        source={{ uri }}
++        style={[
++          {
++            height: size,
++            margin: 1,
++            width: size,
++          },
++          image,
++        ]}
++      >
++        {selected && (
++          <View style={[styles.overlay, { backgroundColor: overlay }, imageOverlay]}>
++            <ImageOverlaySelectedComponent />
++          </View>
++        )}
++      </ImageBackground>
++    </TouchableOpacity>
++  );
++};
++
++const getFileType = (asset: Asset) => {
++  const { filename } = asset;
++  if (filename) {
++    const contentType = lookup(filename) || 'multipart/form-data';
++    return contentType.startsWith('image/') ? 'image' : 'video';
++  } else {
++    return asset.type === 'video' ? 'video' : 'image';
++  }
++};
++
++export const renderAttachmentPickerItem = ({ item }: { item: AttachmentPickerItemType }) => {
++  const {
++    asset,
++    ImageOverlaySelectedComponent,
++    maxNumberOfFiles,
++    numberOfAttachmentPickerImageColumns,
++    numberOfUploads,
++    selected,
++    setSelectedFiles,
++    setSelectedImages,
++  } = item;
++
++  const fileType = getFileType(asset);
++
++  return fileType === 'image' ? (
++    <AttachmentImage
++      asset={asset}
++      ImageOverlaySelectedComponent={ImageOverlaySelectedComponent}
++      maxNumberOfFiles={maxNumberOfFiles}
++      numberOfAttachmentPickerImageColumns={numberOfAttachmentPickerImageColumns}
++      numberOfUploads={numberOfUploads}
++      selected={selected}
++      setSelectedImages={setSelectedImages}
++    />
++  ) : (
++    <AttachmentVideo
++      asset={asset}
++      ImageOverlaySelectedComponent={ImageOverlaySelectedComponent}
++      maxNumberOfFiles={maxNumberOfFiles}
++      numberOfAttachmentPickerImageColumns={numberOfAttachmentPickerImageColumns}
++      numberOfUploads={numberOfUploads}
++      selected={selected}
++      setSelectedFiles={setSelectedFiles}
++    />
++  );
++};
++
++const styles = StyleSheet.create({
++  durationText: {
++    fontWeight: 'bold',
++  },
++  overlay: {
++    alignItems: 'flex-end',
++    flex: 1,
++  },
++  videoView: {
++    bottom: 5,
++    display: 'flex',
++    flexDirection: 'row',
++    justifyContent: 'space-between',
++    paddingHorizontal: 5,
++    position: 'absolute',
++    width: '100%',
++  },
++});
+\ No newline at end of file
+diff --git a/node_modules/stream-chat-react-native-core/src/components/MessageList/NetworkDownIndicator.tsx b/node_modules/stream-chat-react-native-core/src/components/MessageList/NetworkDownIndicator.tsx
+index 3caf6ca..668acb8 100644
+--- a/node_modules/stream-chat-react-native-core/src/components/MessageList/NetworkDownIndicator.tsx
++++ b/node_modules/stream-chat-react-native-core/src/components/MessageList/NetworkDownIndicator.tsx
+@@ -33,22 +33,25 @@ export const NetworkDownIndicator = () => {
+   } = useTheme();
+   const { t } = useTranslationContext();
+ 
+-  if (isOnline && !error) {
+-    return null;
+-  }
++  const getText = () => {
++    if (!isOnline) {
++      return t('Reconnecting...');
++    } else if (error) {
++      return t('Error loading messages for this channel...');
++    }
++    return '';
++  };
++
++  const indicatorText = getText();
++
++  if (!indicatorText) return null;
+ 
+   return (
+     <View
+       style={[styles.errorNotification, { backgroundColor: `${grey}E6` }, errorNotification]}
+       testID='error-notification'
+     >
+-      <Text style={[styles.errorNotificationText, errorNotificationText]}>
+-        {!isOnline
+-          ? t('Reconnecting...')
+-          : error
+-          ? t('Error loading messages for this channel...')
+-          : ''}
+-      </Text>
++      <Text style={[styles.errorNotificationText, errorNotificationText]}>{indicatorText}</Text>
+     </View>
+   );
+ };
+diff --git a/node_modules/stream-chat-react-native-core/src/contexts/messageInputContext/MessageInputContext.tsx b/node_modules/stream-chat-react-native-core/src/contexts/messageInputContext/MessageInputContext.tsx
+index 1cb5cbb..a410ab2 100644
+--- a/node_modules/stream-chat-react-native-core/src/contexts/messageInputContext/MessageInputContext.tsx
++++ b/node_modules/stream-chat-react-native-core/src/contexts/messageInputContext/MessageInputContext.tsx
+@@ -62,6 +62,9 @@ export type FileUpload = {
+   file: File;
+   id: string;
+   state: FileStateValue;
++  duration?: number;
++  paused?: boolean;
++  progress?: number;
+   thumb_url?: string;
+   url?: string;
+ };
+@@ -208,7 +211,7 @@ export type LocalMessageInputContext<
+   /** Function for attempting to upload an image */
+   uploadImage: ({ newImage }: { newImage: ImageUpload }) => Promise<void>;
+   uploadNewFile: (file: File) => Promise<void>;
+-  uploadNewImage: (image: Asset) => Promise<void>;
++  uploadNewImage: (image: Partial<Asset>) => Promise<void>;
+ };
+ 
+ export type InputMessageInputContextValue<
+@@ -220,6 +223,7 @@ export type InputMessageInputContextValue<
+    * Defaults to and accepts same props as: [AttachButton](https://getstream.io/chat/docs/sdk/reactnative/ui-components/attach-button/)
+    */
+   AttachButton: React.ComponentType<AttachButtonProps<StreamChatGenerics>>;
++
+   clearEditingState: () => void;
+   clearQuotedMessageState: () => void;
+   /**
+@@ -545,16 +549,8 @@ export const MessageInputProvider = <
+   const openAttachmentPicker = () => {
+     if (hasImagePicker) {
+       Keyboard.dismiss();
+-      openPicker();
+       setSelectedPicker('images');
+-      /**
+-       * TODO: Remove this, this is the result of
+-       * the bottom sheet now having some keyboard
+-       * handling baked in, creating an issue when
+-       * we call dismiss and open in short order.
+-       * https://github.com/gorhom/react-native-bottom-sheet/issues/446
+-       */
+-      setTimeout(openPicker, 600);
++      openPicker();
+     } else if (hasFilePicker) {
+       pickFile();
+     }
+@@ -676,11 +672,11 @@ export const MessageInputProvider = <
+         attachments.push({
+           fallback: image.file.name,
+           image_url: image.url,
+-          mime_type,
++          mime_type: mime_type ? mime_type : undefined,
+           original_height: image.height,
+           original_width: image.width,
+           type: 'image',
+-        } as Attachment<StreamChatGenerics>);
++        });
+       }
+     }
+ 
+@@ -700,9 +696,9 @@ export const MessageInputProvider = <
+           attachments.push({
+             fallback: file.file.name,
+             image_url: file.url,
+-            mime_type,
++            mime_type: mime_type ? mime_type : undefined,
+             type: 'image',
+-          } as Attachment<StreamChatGenerics>);
++          });
+         } else if (file.file.type?.startsWith('audio/')) {
+           attachments.push({
+             asset_url: file.url,
+@@ -711,7 +707,7 @@ export const MessageInputProvider = <
+             mime_type: file.file.type,
+             title: file.file.name,
+             type: 'audio',
+-          } as Attachment<StreamChatGenerics>);
++          });
+         } else if (file.file.type?.startsWith('video/')) {
+           attachments.push({
+             asset_url: file.url,
+@@ -721,7 +717,7 @@ export const MessageInputProvider = <
+             thumb_url: file.thumb_url,
+             title: file.file.name,
+             type: 'video',
+-          } as Attachment<StreamChatGenerics>);
++          });
+         } else {
+           attachments.push({
+             asset_url: file.url,
+@@ -729,7 +725,7 @@ export const MessageInputProvider = <
+             mime_type: file.file.type,
+             title: file.file.name,
+             type: 'file',
+-          } as Attachment<StreamChatGenerics>);
++          });
+         }
+       }
+     }
+@@ -830,19 +826,27 @@ export const MessageInputProvider = <
+     }
+   };
+ 
+-  const triggerSettings = channel
+-    ? value.autoCompleteTriggerSettings
+-      ? value.autoCompleteTriggerSettings({
++  const getTriggerSettings = () => {
++    let triggerSettings: TriggerSettings<StreamChatGenerics> = {};
++    if (channel) {
++      if (value.autoCompleteTriggerSettings) {
++        triggerSettings = value.autoCompleteTriggerSettings({
+           channel,
+           client,
+           onMentionSelectItem: onSelectItem,
+-        })
+-      : ACITriggerSettings<StreamChatGenerics>({
++        });
++      } else {
++        triggerSettings = ACITriggerSettings<StreamChatGenerics>({
+           channel,
+           client,
+           onMentionSelectItem: onSelectItem,
+-        })
+-    : ({} as TriggerSettings<StreamChatGenerics>);
++        });
++      }
++    }
++    return triggerSettings;
++  };
++
++  const triggerSettings = getTriggerSettings();
+ 
+   const updateMessage = async () => {
+     try {
+@@ -942,13 +946,15 @@ export const MessageInputProvider = <
+        * if the uri includes assets-library, this uses the CameraRoll.save
+        * function to also create a local uri.
+        */
+-      const localUri = file.id
+-        ? await getLocalAssetUri(file.id)
+-        : file.uri?.match(/assets-library/)
+-        ? await getLocalAssetUri(file.uri)
+-        : file.uri;
+-
+-      const uri = file.name || localUri || '';
++      const getLocalUri = async () => {
++        if (file.id) {
++          return await getLocalAssetUri(file.id);
++        } else if (file.uri?.match(/assets-library/)) {
++          return await getLocalAssetUri(file.uri);
++        }
++        return file.uri;
++      };
++      const uri = file.name || (await getLocalUri()) || '';
+       /**
+        * We skip compression if:
+        * - the file is from the camera as that should already be compressed
+@@ -1031,8 +1037,11 @@ export const MessageInputProvider = <
+         : FileState.UPLOADING;
+ 
+     const newFile: FileUpload = {
++      duration: 0,
+       file: { ...file, type: mimeType || file?.type },
+       id,
++      paused: true,
++      progress: 0,
+       state: fileState,
+     };
+ 
+@@ -1046,7 +1055,7 @@ export const MessageInputProvider = <
+     }
+   };
+ 
+-  const uploadNewImage = async (image: Asset) => {
++  const uploadNewImage = async (image: Partial<Asset>) => {
+     const id = generateRandomId();
+ 
+     const isBlockedImageMimeType = blockedImageMimeTypes?.some((mimeType: string) =>
+diff --git a/node_modules/stream-chat-react-native-core/src/contexts/overlayContext/OverlayProvider.tsx b/node_modules/stream-chat-react-native-core/src/contexts/overlayContext/OverlayProvider.tsx
+index 1930c1f..93e6628 100644
+--- a/node_modules/stream-chat-react-native-core/src/contexts/overlayContext/OverlayProvider.tsx
++++ b/node_modules/stream-chat-react-native-core/src/contexts/overlayContext/OverlayProvider.tsx
+@@ -65,6 +65,7 @@ export const OverlayProvider = <
+ >(
+   props: PropsWithChildren<OverlayProviderProps<StreamChatGenerics>>,
+ ) => {
++  const bottomSheetCloseTimeoutRef = useRef<NodeJS.Timeout>();
+   const {
+     AttachmentPickerBottomSheetHandle = DefaultAttachmentPickerBottomSheetHandle,
+     attachmentPickerBottomSheetHandleHeight,
+@@ -78,8 +79,19 @@ export const OverlayProvider = <
+     CameraSelectorIcon = DefaultCameraSelectorIcon,
+     children,
+     closePicker = (ref) => {
+-      if (ref.current) {
++      if (ref.current?.close) {
++        if (bottomSheetCloseTimeoutRef.current) {
++          clearTimeout(bottomSheetCloseTimeoutRef.current);
++        }
+         ref.current.close();
++        // Attempt to close the bottomsheet again to circumvent accidental opening on Android.
++        // Details: This to prevent a race condition where the close function is called during the point when a internal container layout happens within the bottomsheet due to keyboard affecting the layout
++        // If the container layout measures a shorter height than previous but if the close snapped to the previous height's position, the bottom sheet will show up
++        // this short delay ensures that close function is always called after a container layout due to keyboard change
++        // NOTE: this timeout has to be above 500 as the keyboardAnimationDuration is 500 in the bottomsheet library - see src/hooks/useKeyboard.ts there for more details
++        bottomSheetCloseTimeoutRef.current = setTimeout(() => {
++          ref.current?.close();
++        }, 600);
+       }
+     },
+     FileSelectorIcon = DefaultFileSelectorIcon,
+@@ -97,6 +109,9 @@ export const OverlayProvider = <
+     numberOfAttachmentPickerImageColumns,
+     numberOfImageGalleryGridColumns,
+     openPicker = (ref) => {
++      if (bottomSheetCloseTimeoutRef.current) {
++        clearTimeout(bottomSheetCloseTimeoutRef.current);
++      }
+       if (ref.current?.snapToIndex) {
+         ref.current.snapToIndex(0);
+       } else {
+@@ -155,10 +170,19 @@ export const OverlayProvider = <
+     return () => backHandler.remove();
+   }, [overlay]);
+ 
++  useEffect(
++    () =>
++      // cleanup the timeout if the component unmounts
++      () => {
++        if (bottomSheetCloseTimeoutRef.current) {
++          clearTimeout(bottomSheetCloseTimeoutRef.current);
++        }
++      },
++    [],
++  );
++
+   useEffect(() => {
+-    if (bottomSheetRef.current) {
+-      bottomSheetRef.current.close?.();
+-    }
++    closePicker(bottomSheetRef);
+     cancelAnimation(overlayOpacity);
+     if (overlay !== 'none') {
+       overlayOpacity.value = withTiming(1);
+@@ -167,9 +191,6 @@ export const OverlayProvider = <
+     }
+   }, [overlay]);
+ 
+-  // Setup translators
+-  useStreami18n({ i18nInstance, setTranslators });
+-
+   const attachmentPickerContext = {
+     attachmentPickerBottomSheetHeight,
+     attachmentSelectionBarHeight,
+diff --git a/node_modules/stream-chat-react-native-core/src/hooks/__tests__/useAppStateListener.test.tsx b/node_modules/stream-chat-react-native-core/src/hooks/__tests__/useAppStateListener.test.tsx
+new file mode 100644
+index 0000000..dca5334
+--- /dev/null
++++ b/node_modules/stream-chat-react-native-core/src/hooks/__tests__/useAppStateListener.test.tsx
+@@ -0,0 +1,41 @@
++import { AppState, AppStateStatus } from 'react-native';
++
++import { renderHook } from '@testing-library/react-hooks/pure';
++import { waitFor } from '@testing-library/react-native';
++
++import { useAppStateListener } from '../useAppStateListener';
++
++describe('useAppStateListener', () => {
++  const onForeground = jest.fn();
++  const onBackground = jest.fn();
++  const addEventListenerSpy = jest.spyOn(AppState, 'addEventListener');
++  AppState.currentState = 'active';
++  const { unmount } = renderHook(() => useAppStateListener(onForeground, onBackground));
++  const appStateOnChangeMockFunc = addEventListenerSpy.mock.calls[0][1];
++  const { remove: appStateOnChangeSubscriptionRemoveMockFunc } =
++    addEventListenerSpy.mock.results[0].value;
++  test.each<[AppStateStatus, jest.Mock, number]>([
++    ['background', onBackground, 1],
++    ['active', onForeground, 1],
++    ['inactive', onBackground, 2],
++    ['active', onForeground, 2],
++    ['background', onBackground, 3],
++  ])(
++    'Appropriate callback called when appstate is changed to %s)',
++    async (newAppState, expectedCallback, times) => {
++      appStateOnChangeMockFunc(newAppState);
++      await waitFor(() => {
++        expect(expectedCallback).toHaveBeenCalledTimes(times);
++      });
++    },
++  );
++  test('check unmount behavior', async () => {
++    await waitFor(() => {
++      expect(appStateOnChangeSubscriptionRemoveMockFunc).not.toHaveBeenCalled();
++    });
++    unmount();
++    await waitFor(() => {
++      expect(appStateOnChangeSubscriptionRemoveMockFunc).toHaveBeenCalled();
++    });
++  });
++});
+\ No newline at end of file
+diff --git a/node_modules/stream-chat-react-native-core/src/hooks/useAppStateListener.ts b/node_modules/stream-chat-react-native-core/src/hooks/useAppStateListener.ts
+index f1c2051..b07f3fa 100644
+--- a/node_modules/stream-chat-react-native-core/src/hooks/useAppStateListener.ts
++++ b/node_modules/stream-chat-react-native-core/src/hooks/useAppStateListener.ts
+@@ -1,22 +1,19 @@
+-import { useCallback, useEffect, useState } from 'react';
++import { useCallback, useEffect, useRef } from 'react';
+ import { AppState, AppStateStatus } from 'react-native';
+ 
+ export const useAppStateListener = (onForeground?: () => void, onBackground?: () => void) => {
+-  const [appState, setAppState] = useState(AppState.currentState);
++  const appStateRef = useRef(AppState.currentState);
+   const handleAppStateChange = useCallback(
+     (nextAppState: AppStateStatus) => {
+-      if (appState === 'background' && nextAppState === 'active' && onForeground) {
+-        onForeground();
+-      } else if (
+-        appState.match(/active|inactive/) &&
+-        nextAppState === 'background' &&
+-        onBackground
+-      ) {
+-        onBackground();
++      const prevAppState = appStateRef.current;
++      if (prevAppState.match(/inactive|background/) && nextAppState === 'active') {
++        onForeground?.();
++      } else if (prevAppState === 'active' && nextAppState.match(/inactive|background/)) {
++        onBackground?.();
+       }
+-      setAppState(nextAppState);
++      appStateRef.current = nextAppState;
+     },
+-    [onBackground, onForeground, appState],
++    [onBackground, onForeground],
+   );
+ 
+   useEffect(() => {

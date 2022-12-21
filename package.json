@@ -1,0 +1,50 @@
+{
+  "name": "CompassIssue",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "start": "react-native start",
+    "test": "jest",
+    "lint": "eslint .",
+    "postinstall": "patch-package"
+  },
+  "dependencies": {
+    "@react-native-community/cameraroll": "^4.1.2",
+    "@react-native-community/netinfo": "^9.3.7",
+    "@react-navigation/native": "6.0.10",
+    "@react-navigation/stack": "6.2.1",
+    "@stream-io/flat-list-mvcp": "^0.10.2",
+    "fbjs": "^3.0.4",
+    "react": "17.0.1",
+    "react-native": "0.64.4",
+    "react-native-document-picker": "^3.5.1",
+    "react-native-fs": "^2.20.0",
+    "react-native-gesture-handler": "^2.8.0",
+    "react-native-haptic-feedback": "^1.14.0",
+    "react-native-image-crop-picker": "^0.37.2",
+    "react-native-image-resizer": "^1.4.5",
+    "react-native-reanimated": "^2.13.0",
+    "react-native-safe-area-context": "3.3.2",
+    "react-native-screens": "3.13.1",
+    "react-native-share": "^8.0.1",
+    "react-native-svg": "^13.6.0",
+    "react-native-video": "^5.2.1",
+    "stream-chat-react-native": "4.10.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.12.9",
+    "@babel/runtime": "^7.12.5",
+    "@react-native-community/eslint-config": "^2.0.0",
+    "babel-jest": "^26.6.3",
+    "eslint": "7.14.0",
+    "jest": "^26.6.3",
+    "metro-react-native-babel-preset": "^0.64.0",
+    "patch-package": "^6.5.0",
+    "react-test-renderer": "17.0.1"
+  },
+  "jest": {
+    "preset": "react-native"
+  }
+}
